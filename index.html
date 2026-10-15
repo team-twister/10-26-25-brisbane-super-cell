@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05080c">
+<title>Brisbane Supercell 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="The 26 October 2025 Brisbane supercell rebuilt in 3D from real BoM radar volumes, 3:30 to 5:05 pm.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed 3D storm; slim header; dock at the bottom with view + data switches, time scrubber and settings */
+:root{
+  --bg:#05080c; --panel:rgba(12,18,26,.92); --line:#253445; --fg:#dce6ee; --muted:#8696a5; --accent:#4fd2e8; --live:#ff5a5a; --warn:#f2b84b;
+  --display:"Chakra Petch",ui-sans-serif,system-ui,sans-serif;
+  --body:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px var(--body);overflow:hidden}
+[hidden]{display:none!important}
+#scene{position:fixed;inset:0;touch-action:none;width:100%;height:100%;display:block}
+header{position:fixed;top:0;left:0;right:0;pointer-events:none;z-index:2;
+  padding-top:calc(10px + env(safe-area-inset-top,0px));padding-bottom:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:linear-gradient(rgba(5,8,12,.95) 60%,transparent)}
+h1{margin:0;font-family:var(--display);font-weight:700;font-size:1.15rem;letter-spacing:.04em;text-transform:uppercase;text-wrap:balance}
+h1 span{color:var(--accent)}
+.meta{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:3px;line-height:1.45}
+.meta b{color:var(--fg);font-weight:500}
+.meta .hot{color:var(--live)}
+.status{position:fixed;z-index:3;left:50%;transform:translateX(-50%);top:calc(70px + env(safe-area-inset-top,0px));
+  font:500 .74rem var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 11px;max-width:calc(100% - 32px);text-align:center}
+.status.err{border-color:var(--warn);color:var(--warn)}
+.dock{position:fixed;z-index:2;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
+  bottom:calc(10px + env(safe-area-inset-bottom,0px));max-width:640px;margin:0 auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(10px)}
+.dock-head{display:flex;flex-wrap:wrap;gap:8px;padding:9px 12px;align-items:center}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0}
+.seg.grow{flex:1}
+.seg button{flex:1;font:600 .72rem var(--body);color:var(--muted);background:transparent;border:0;padding:8px 6px;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:rgba(79,210,232,.14);color:var(--accent)}
+.seg.data button[aria-pressed="true"].vel{background:rgba(255,90,90,.14);color:#ff8a8a}
+.seg button+button{border-left:1px solid var(--line)}
+.fold{font:600 .72rem var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+.timebar{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:0 12px 10px}
+.timebar button{font:600 .72rem var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 9px;cursor:pointer;min-width:34px}
+.timebar button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.timebar output{font:500 .78rem var(--mono);min-width:5.2rem;text-align:right;font-variant-numeric:tabular-nums}
+.dock-body{display:grid;gap:10px;padding:0 12px 12px;max-height:30vh;overflow-y:auto}
+.row{display:grid;grid-template-columns:6.4rem 1fr 3.4rem;align-items:center;gap:8px;font-size:.75rem}
+.row label{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:.62rem}
+.row output{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chips[hidden-by-css]{display:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chips .lbl{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:.62rem;margin-right:2px}
+.chip{font:500 .7rem var(--mono);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 8px;cursor:pointer;display:flex;gap:6px;align-items:center}
+.chip i{width:10px;height:10px;border-radius:2px;display:block}
+.chip[aria-pressed="false"]{opacity:.45}
+.scale{display:flex;height:8px;border-radius:2px;overflow:hidden}
+.scale i{flex:1}
+.ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-top:3px}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.btns button{font:500 .7rem var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.btns button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{font-size:.62rem;color:var(--muted);line-height:1.45}
+.ticks.vonly,.ticks.zonly{display:none}
+body.vel .ticks.vonly,body:not(.vel) .ticks.zonly{display:flex}
+[data-views]{display:none}
+body[data-view="radar"] [data-views~="radar"],body[data-view="tilts"] [data-views~="tilts"],body[data-view="blocks"] [data-views~="blocks"],body[data-view="shells"] [data-views~="shells"]{display:grid}
+body[data-view="radar"] .chips[data-views~="radar"]{display:flex}
+body[data-view="shells"]:not(.vel) #zChips,body[data-view="shells"].vel #vChips{display:flex}
+</style>
+</head>
+<body data-view="radar">
+<canvas id="scene"></canvas>
+<header>
+  <h1>Brisbane <span>Supercell</span> · 26 Oct 2025</h1>
+  <div class="meta"><b id="tlabel">4:35 pm</b> · <span id="dlabel">Reflectivity</span> · peak <span class="hot" id="peak">–</span> · Mt Stapylton radar · 13 tilts</div>
+</header>
+<div class="status" id="status" hidden></div>
+
+<div class="dock">
+  <div class="dock-head">
+    <div class="seg grow" role="group" aria-label="View">
+      <button id="vRadar" aria-pressed="true">Radar</button>
+      <button id="vTilts" aria-pressed="false">Tilts</button>
+      <button id="vBlocks" aria-pressed="false">Blocks</button>
+      <button id="vShells" aria-pressed="false">Shells</button>
+    </div>
+    <div class="seg data" role="group" aria-label="Data">
+      <button id="dZ" aria-pressed="true">dBZ</button>
+      <button id="dV" class="vel" aria-pressed="false">Velocity</button>
+    </div>
+    <button class="fold" id="fold" aria-expanded="false">Controls</button>
+  </div>
+  <div class="timebar">
+    <button id="prev" aria-label="Previous scan">◀</button>
+    <input id="time" type="range" min="0" max="19" value="13" aria-label="Scan time">
+    <button id="next" aria-label="Next scan">▶</button>
+    <button id="play" aria-pressed="false">Play</button>
+  </div>
+  <div class="dock-body" id="dockBody" hidden>
+    <div class="chips" data-views="radar"><span class="lbl">Overlay</span><button class="chip" id="raise" aria-pressed="false">Raise 3D storm</button></div>
+    <div class="chips" id="zChips" hidden-by-css><span class="lbl">dBZ shells</span></div>
+    <div class="chips" id="vChips" hidden-by-css><span class="lbl">Wind shells</span></div>
+    <div class="row" data-views="tilts blocks"><label for="min" id="minLbl">Min dBZ</label><input id="min" type="range" min="10" max="70" value="25"><output id="minv">25</output></div>
+    <div class="row" data-views="tilts"><label for="spread">Spread tilts</label><input id="spread" type="range" min="0" max="6" step="0.5" value="0"><output id="spreadv">0</output></div>
+    <div class="row"><label for="exag">Height ×</label><input id="exag" type="range" min="1" max="5" step="0.5" value="2.5"><output id="exagv">2.5</output></div>
+    <div class="row" data-views="tilts blocks shells"><label for="cut">Cut away</label><input id="cut" type="range" min="-120" max="30" value="-120"><output id="cutv">off</output></div>
+    <div>
+      <div class="scale" id="scale"></div>
+      <div class="ticks zonly"><span>15</span><span>25</span><span>35</span><span>45</span><span>55</span><span>65</span><span>75 dBZ</span></div>
+      <div class="ticks vonly"><span>35 toward</span><span>15</span><span>0</span><span>15</span><span>35 m/s away</span></div>
+    </div>
+    <div class="btns">
+      <button id="spin" aria-pressed="false">Auto-rotate</button>
+      <button id="reset">Reset view</button>
+    </div>
+    <div class="note">Velocity is wind toward (green) or away from (red) the radar, not true wind direction. Heights are stretched ×2.5 by default; set Height to 1 for true scale. Gaps high up far from the radar are real: the tilts spread apart with distance. Town positions are approximate.<br>Radar data: Bureau of Meteorology via the AURA archive (NCI, Monash University), used under its non-commercial licence. Built by Team Twister.</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const FRAMES=[{"label":"3:30 pm"},{"label":"3:35 pm"},{"label":"3:40 pm"},{"label":"3:45 pm"},{"label":"3:50 pm"},{"label":"3:55 pm"},{"label":"4:00 pm"},{"label":"4:05 pm"},{"label":"4:10 pm"},{"label":"4:15 pm"},{"label":"4:20 pm"},{"label":"4:25 pm"},{"label":"4:30 pm"},{"label":"4:35 pm"},{"label":"4:40 pm"},{"label":"4:45 pm"},{"label":"4:50 pm"},{"label":"4:55 pm"},{"label":"5:00 pm"},{"label":"5:05 pm"}].map((f,i)=>({...f,file:`f${String(i).padStart(2,'0')}.dat`}));
+const PLACES=[['Brisbane CBD',153.026,-27.470],['Ipswich',152.760,-27.614],['Redcliffe',153.100,-27.230],['Logan',153.110,-27.640],['Caboolture',152.950,-27.070],['Esk',152.420,-27.240],['Samford',152.890,-27.370],['Beaudesert',152.996,-27.988],['Gatton',152.280,-27.560],['Laidley',152.390,-27.630],['Boonah',152.680,-27.990]];
+const RLAT=-27.7178,RLON=153.24,TOPR=120;
+const ZST=[[10,[120,130,140]],[15,[92,157,174]],[20,[39,169,67]],[25,[24,131,35]],[30,[35,115,8]],[33,[155,191,3]],[35,[244,243,0]],[40,[204,188,0]],[41,[238,138,1]],[49,[196,104,8]],[50,[249,35,11]],[58,[148,39,28]],[60,[200,133,169]],[65,[196,67,134]],[66,[154,36,224]],[72,[105,24,179]],[76,[230,230,255]]];
+const VST=[[-35,[200,255,200]],[-25,[0,255,60]],[-12,[0,150,40]],[-3,[60,90,65]],[0,[110,110,110]],[3,[95,60,60]],[12,[170,0,20]],[25,[255,30,60]],[35,[255,200,170]]];
+function ramp(st,z){if(z<=st[0][0])return st[0][1];for(let i=1;i<st.length;i++){const[a,ca]=st[i-1],[b,cb]=st[i];if(z<=b){const t=(z-a)/(b-a);return ca.map((v,k)=>v+(cb[k]-v)*t)}}return st.at(-1)[1]}
+const $=id=>document.getElementById(id);
+const st={t:13,view:'radar',data:'z',min:{z:{tilts:25,blocks:45},v:{tilts:15,blocks:20}},spread:0,exag:2.5,cut:-120,raise:false,
+  zl:{20:true,40:true,50:true,60:true},vl:{in15:true,in25:true,out15:true,out25:true}};
+function status(msg,err){const s=$('status');if(!msg){s.hidden=true;return}s.hidden=false;s.textContent=msg;s.classList.toggle('err',!!err)}
+function drawScale(){const sc=$('scale');sc.innerHTML='';
+  if(st.data==='z')for(let z=15;z<76;z++){const i=document.createElement('i');i.style.background=`rgb(${ramp(ZST,z).map(Math.round)})`;sc.appendChild(i)}
+  else for(let v=-35;v<=35;v++){const i=document.createElement('i');i.style.background=`rgb(${ramp(VST,v).map(Math.round)})`;sc.appendChild(i)}}
+
+/* ---------- scene ---------- */
+const canvas=$('scene');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.localClippingEnabled=true;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x05080c);scene.fog=new THREE.Fog(0x05080c,300,650);
+const camera=new THREE.PerspectiveCamera(45,1,0.1,3000);
+const controls=new THREE.OrbitControls(camera,canvas);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.49;controls.minDistance=8;controls.maxDistance=500;controls.autoRotateSpeed=1;
+scene.add(new THREE.HemisphereLight(0xdbe9ff,0x20180c,0.8));
+const sun=new THREE.DirectionalLight(0xffffff,0.75);sun.position.set(-80,120,60);scene.add(sun);
+const clip=new THREE.Plane(new THREE.Vector3(1,0,0),120);
+const world=new THREE.Group();scene.add(world);
+const storm=new THREE.Group();world.add(storm);
+const LABELS=[];
+function label(text,x,z,color){
+  const c=document.createElement('canvas'),ctx=c.getContext('2d'),fs=40,font=`600 ${fs}px IBM Plex Sans, system-ui, sans-serif`;ctx.font=font;
+  const w=Math.ceil(ctx.measureText(text).width)+24;c.width=w;c.height=fs+20;
+  ctx.font=font;ctx.fillStyle='rgba(5,8,12,.7)';ctx.fillRect(0,0,w,c.height);ctx.fillStyle=color;ctx.textBaseline='middle';ctx.fillText(text,12,c.height/2);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true,fog:false}));
+  sp.userData.aspect=w/c.height;sp.position.set(x,3.2,z);sp.renderOrder=10;LABELS.push(sp);return sp;
+}
+(function ground(){
+  const g=new THREE.Group();
+  const plane=new THREE.Mesh(new THREE.PlaneGeometry(150,110),new THREE.MeshBasicMaterial({color:0x0d1620}));
+  plane.rotation.x=-Math.PI/2;plane.position.set(-45,-0.05,-5);g.add(plane);
+  const pts=[];for(let v=-120;v<=30;v+=10){pts.push(v,0,50,v,0,-60)}for(let v=-50;v<=60;v+=10){pts.push(-120,0,-v,30,0,-v)}
+  const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  g.add(new THREE.LineSegments(gg,new THREE.LineBasicMaterial({color:0x1d2b3a})));
+  for(const r of [25,50,75,100]){const p=[];for(let a=0;a<=160;a++){const t=a/160*Math.PI*2;p.push(new THREE.Vector3(Math.sin(t)*r,0.03,-Math.cos(t)*r))}
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:0x2c6b78,transparent:true,opacity:.5})))}
+  const radar=new THREE.Mesh(new THREE.ConeGeometry(0.9,2.4,4),new THREE.MeshBasicMaterial({color:0xff5a5a}));radar.position.set(0,1.2,0);g.add(radar);
+  g.add(label('Mt Stapylton radar',0,0,'#ff8a8a'));
+  for(const[n,lon,lat]of PLACES){const x=(lon-RLON)*111.32*Math.cos(RLAT*Math.PI/180),y=(lat-RLAT)*110.57;
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,8),new THREE.MeshBasicMaterial({color:0xffffff}));d.position.set(x,0.3,-y);g.add(d);g.add(label(n,x,-y,'#ffffff'))}
+  world.add(g);
+})();
+const topPlane=new THREE.Mesh(new THREE.PlaneGeometry(TOPR*2,TOPR*2),new THREE.MeshBasicMaterial({transparent:true,depthWrite:false,fog:false}));
+topPlane.rotation.x=-Math.PI/2;topPlane.position.y=0.05;topPlane.renderOrder=1;world.add(topPlane);
+const topBg=new THREE.Mesh(new THREE.CircleGeometry(TOPR,128),new THREE.MeshBasicMaterial({color:0x020406,fog:false}));topBg.rotation.x=-Math.PI/2;topBg.position.y=0.01;world.add(topBg);
+
+/* ---------- frame loading ---------- */
+const cache=new Map(),pending=new Map();
+async function fetchFrame(i){
+  if(cache.has(i))return cache.get(i);
+  if(pending.has(i))return pending.get(i);
+  const p=(async()=>{
+    const res=await fetch(FRAMES[i].file);if(!res.ok)throw new Error(`Could not load ${FRAMES[i].label} (${res.status})`);
+    let buf;
+    if('DecompressionStream' in window)buf=await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    else throw new Error('This browser is too old to unpack the radar files. Update iOS or try another browser.');
+    const n=new DataView(buf).getUint32(0,true);const meta=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,4,n)));const base=4+n;
+    const blob=(k,T=Uint8Array)=>{const[o,l]=meta.blobs[k];return new T(buf.slice(base+o,base+o+l))};
+    const f={meta,blob,tex:{}};
+    for(const k of['pz','pv']){const url=URL.createObjectURL(new Blob([blob(k)],{type:'image/png'}));const t=new THREE.TextureLoader().load(url,()=>URL.revokeObjectURL(url));t.anisotropy=4;f.tex[k]=t}
+    f.geo={};
+    cache.set(i,f);pending.delete(i);return f;
+  })();
+  pending.set(i,p);p.catch(()=>pending.delete(i));return p;
+}
+function shellGeo(f,key){
+  if(f.geo[key])return f.geo[key];
+  const v=f.blob(key+'v',Int16Array),fa=f.blob(key+'f',Uint32Array);if(!fa.length)return f.geo[key]=null;
+  const pos=new Float32Array(v.length);for(let i=0;i<v.length;i++)pos[i]=v[i]/100;
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setIndex(new THREE.BufferAttribute(fa,1));g.computeVertexNormals();
+  return f.geo[key]=g;
+}
+
+/* ---------- builders ---------- */
+const tmp=new THREE.Object3D(),cc=new THREE.Color();
+function clearStorm(){for(const o of storm.children.slice()){storm.remove(o);if(o.isInstancedMesh)o.geometry.dispose();[].concat(o.material).forEach(m=>m.dispose())}}
+const colorOf=d=>st.data==='z'?ramp(ZST,d):ramp(VST,d);
+function passes(d){const m=st.min[st.data][st.view];return st.data==='z'?d>=m:Math.abs(d)>=m}
+function decode(q){return st.data==='z'?q-32:q-64}
+function buildBlocks(f){
+  const M=f.meta,vol=f.blob(st.data==='z'?'volz':'volv'),list=[];
+  for(let k=0;k<M.nz;k++)for(let j=0;j<M.ny;j++)for(let i=0;i<M.nx;i++){const q=vol[(k*M.ny+j)*M.nx+i];if(!q)continue;const d=decode(q);if(passes(d))list.push(i,j,k,d)}
+  const n=list.length/4,m=new THREE.InstancedMesh(new THREE.BoxGeometry(M.dx,M.dz,M.dx),new THREE.MeshLambertMaterial({clippingPlanes:[clip]}),Math.max(1,n));
+  for(let p=0;p<n;p++){const i=list[p*4],j=list[p*4+1],k=list[p*4+2],d=list[p*4+3];
+    tmp.position.set(M.x0+(i+0.5)*M.dx,(k+0.5)*M.dz,-(M.y0+(j+0.5)*M.dx));tmp.updateMatrix();m.setMatrixAt(p,tmp.matrix);
+    const[r,g,b]=colorOf(d);m.setColorAt(p,cc.setRGB(r/255,g/255,b/255).convertSRGBToLinear())}
+  m.count=n;storm.add(m);
+}
+function buildTilts(f){
+  const M=f.meta,S=2; // 1 km tiles keep phones smooth
+  M.tilts.forEach((el,idx)=>{
+    const g=f.blob((st.data==='z'?'tz':'tv')+idx),h=f.blob('th'+idx),list=[];
+    for(let j=0;j<M.ny;j+=S)for(let i=0;i<M.nx;i+=S){const q=g[j*M.nx+i];if(!q||!h[j*M.nx+i])continue;const d=decode(q);if(passes(d))list.push(i,j,h[j*M.nx+i]/10,d)}
+    const n=list.length/4;if(!n)return;
+    const m=new THREE.InstancedMesh(new THREE.BoxGeometry(M.dx*S,0.12,M.dx*S),new THREE.MeshLambertMaterial({clippingPlanes:[clip]}),n);
+    for(let p=0;p<n;p++){const i=list[p*4],j=list[p*4+1],hh=list[p*4+2],d=list[p*4+3];
+      tmp.position.set(M.x0+(i+S/2)*M.dx,hh+idx*st.spread/st.exag,-(M.y0+(j+S/2)*M.dx));tmp.updateMatrix();m.setMatrixAt(p,tmp.matrix);
+      const[r,g2,b]=colorOf(d);m.setColorAt(p,cc.setRGB(r/255,g2/255,b/255).convertSRGBToLinear())}
+    storm.add(m);
+  });
+}
+const ZSHELL={20:{c:0x3fb878,o:0.13},40:{c:0xf2d20a,o:0.28},50:{c:0xf2400f,o:0.5},60:{c:0xd56ad6,o:0.95}};
+const VSHELL={in15:{c:0x1fbf55,o:0.22,k:'svin15'},in25:{c:0x6dff8a,o:0.85,k:'svin25'},out15:{c:0xc8102e,o:0.22,k:'svout15'},out25:{c:0xff4d6a,o:0.85,k:'svout25'}};
+function buildShells(f){
+  const add=(geo,s,order)=>{if(!geo)return;const m=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:s.c,transparent:s.o<0.9,opacity:s.o,side:THREE.DoubleSide,depthWrite:s.o>=0.8,shininess:30,clippingPlanes:[clip]}));m.renderOrder=order;storm.add(m)};
+  if(st.data==='z'){for(const L of[20,40,50,60])if(st.zl[L])add(shellGeo(f,'sz'+L),ZSHELL[L],100-L)}
+  else for(const k of['in15','out15','in25','out25'])if(st.vl[k])add(shellGeo(f,VSHELL[k].k),VSHELL[k],k.endsWith('15')?2:5);
+}
+let current=null;
+async function render(){
+  const i=st.t;$('tlabel').textContent=FRAMES[i].label;$('time').value=i;
+  let f=cache.get(i);
+  if(!f){status(`Loading ${FRAMES[i].label}…`);try{f=await fetchFrame(i)}catch(e){status(e.message,true);return}if(st.t!==i)return;status(null)}
+  current=f;clearStorm();
+  $('peak').textContent=`${Math.round(f.meta.maxz)} dBZ`;
+  const radar=st.view==='radar';topPlane.visible=topBg.visible=radar;
+  if(radar){topPlane.material.map=f.tex[st.data==='z'?'pz':'pv'];topPlane.material.needsUpdate=true;if(st.raise)buildShells(f)}
+  else if(st.view==='blocks')buildBlocks(f);else if(st.view==='tilts')buildTilts(f);else buildShells(f);
+  storm.scale.y=st.exag;
+  for(const d of[1,2,-1])if(i+d>=0&&i+d<FRAMES.length)fetchFrame(i+d).catch(()=>{});  // prefetch neighbours
+}
+
+/* ---------- controls ---------- */
+function syncMin(){const m=st.min[st.data][st.view];if(m===undefined)return;$('min').value=m;$('minv').textContent=m;
+  $('minLbl').textContent=st.data==='z'?'Min dBZ':'Min speed';$('min').max=st.data==='z'?70:40;$('min').min=st.data==='z'?10:5}
+function setView(v){const was=st.view;st.view=v;document.body.dataset.view=v;
+  [['radar','vRadar'],['tilts','vTilts'],['blocks','vBlocks'],['shells','vShells']].forEach(([k,id])=>$(id).setAttribute('aria-pressed',k===v));
+  syncMin();render();if((v==='radar')!==(was==='radar'))home()}
+function setData(d){st.data=d;document.body.classList.toggle('vel',d==='v');$('dZ').setAttribute('aria-pressed',d==='z');$('dV').setAttribute('aria-pressed',d==='v');
+  $('dlabel').textContent=d==='z'?'Reflectivity':'Velocity';drawScale();syncMin();render()}
+$('vRadar').onclick=()=>setView('radar');$('vTilts').onclick=()=>setView('tilts');$('vBlocks').onclick=()=>setView('blocks');$('vShells').onclick=()=>setView('shells');
+$('dZ').onclick=()=>setData('z');$('dV').onclick=()=>setData('v');
+let deb=null;const later=f=>{clearTimeout(deb);deb=setTimeout(f,90)};
+$('time').oninput=()=>{st.t=+$('time').value;$('tlabel').textContent=FRAMES[st.t].label;later(render)};
+$('prev').onclick=()=>{if(st.t>0){st.t--;render()}};$('next').onclick=()=>{if(st.t<FRAMES.length-1){st.t++;render()}};
+$('min').oninput=()=>{st.min[st.data][st.view]=+$('min').value;$('minv').textContent=$('min').value;later(render)};
+$('spread').oninput=()=>{st.spread=+$('spread').value;$('spreadv').textContent=st.spread;later(render)};
+$('exag').oninput=()=>{st.exag=+$('exag').value;$('exagv').textContent=st.exag;storm.scale.y=st.exag;if(st.view==='tilts')later(render)};
+$('cut').oninput=()=>{st.cut=+$('cut').value;clip.constant=-st.cut;$('cutv').textContent=st.cut<=-120?'off':(st.cut<0?`${-st.cut} km W`:`${st.cut} km E`)};
+for(const L of[20,40,50,60]){const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed','true');
+  b.innerHTML=`<i style="background:#${ZSHELL[L].c.toString(16).padStart(6,'0')}"></i>${L}+`;b.onclick=()=>{st.zl[L]=!st.zl[L];b.setAttribute('aria-pressed',st.zl[L]);render()};$('zChips').appendChild(b)}
+for(const[k,name]of[['in15','Toward 15+'],['in25','Toward 25+'],['out15','Away 15+'],['out25','Away 25+']]){const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed','true');
+  b.innerHTML=`<i style="background:#${VSHELL[k].c.toString(16).padStart(6,'0')}"></i>${name}`;b.title=`${name} m/s`;b.onclick=()=>{st.vl[k]=!st.vl[k];b.setAttribute('aria-pressed',st.vl[k]);render()};$('vChips').appendChild(b)}
+$('raise').onclick=()=>{st.raise=!st.raise;$('raise').setAttribute('aria-pressed',st.raise);render();
+  if(st.raise){const n=innerWidth<600;controls.target.set(-30,6,-10);camera.position.set(45,n?160:100,n?185:125);controls.update()}else home()};
+$('fold').onclick=()=>{const open=$('fold').getAttribute('aria-expanded')!=='true';$('fold').setAttribute('aria-expanded',open);$('fold').textContent=open?'Hide':'Controls';$('dockBody').hidden=!open};
+let playing=false;
+$('play').onclick=async()=>{playing=!playing;$('play').setAttribute('aria-pressed',playing);$('play').textContent=playing?'Pause':'Play';
+  while(playing){const nx=(st.t+1)%FRAMES.length;try{await fetchFrame(nx)}catch(e){status(e.message,true);break}if(!playing)break;st.t=nx;await render();await new Promise(r=>setTimeout(r,650))}};
+$('spin').onclick=()=>{controls.autoRotate=!controls.autoRotate;$('spin').setAttribute('aria-pressed',controls.autoRotate)};
+function home(){const narrow=innerWidth<600;
+  if(st.view==='radar'&&!st.raise){const fov=camera.fov*Math.PI/360,h=Math.max(TOPR*0.55/Math.tan(fov),TOPR*0.55/(Math.tan(fov)*camera.aspect));controls.target.set(-25,0,-10);camera.position.set(-25,h,-9.99);controls.update();return}
+  controls.target.set(-35,8,-8);camera.position.set(50,narrow?160:100,narrow?190:130);controls.update()}
+$('reset').onclick=home;
+function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();drawScale();syncMin();home();render();
+(function loop(){requestAnimationFrame(loop);controls.update();
+  for(const sp of LABELS){const d=camera.position.distanceTo(sp.position),h=Math.max(2.2,d*0.022);sp.scale.set(h*sp.userData.aspect,h,1)}
+  renderer.render(scene,camera)})();
+</script>
+</body>
+</html>
