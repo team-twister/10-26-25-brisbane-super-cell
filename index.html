@@ -74,7 +74,11 @@ body.vel .ticks.vonly,body:not(.vel) .ticks.zonly{display:flex}
 [data-views]{display:none}
 body[data-view="radar"] [data-views~="radar"],body[data-view="tilts"] [data-views~="tilts"],body[data-view="blocks"] [data-views~="blocks"],body[data-view="shells"] [data-views~="shells"]{display:grid}
 body[data-view="radar"] .chips[data-views~="radar"]{display:flex}
-body[data-view="shells"]:not(.vel) #zChips,body[data-view="shells"].vel #vChips{display:flex}
+body[data-view="shells"]:not(.vel) #zChips,body[data-view="shells"].vel #vChips,body[data-view="shells"] #greyRow,body[data-view="radar"].raised #greyRow{display:flex}
+body[data-view="radar"].raised .row.lift{display:grid}
+.opac{display:none;gap:6px}
+body[data-view="shells"] .opac,body[data-view="radar"].raised .opac{display:grid}
+.opac .row i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:-1px}
 </style>
 </head>
 <body data-view="radar">
@@ -109,8 +113,12 @@ body[data-view="shells"]:not(.vel) #zChips,body[data-view="shells"].vel #vChips{
     <div class="chips" data-views="radar"><span class="lbl">Overlay</span><button class="chip" id="raise" aria-pressed="false">Raise 3D storm</button></div>
     <div class="chips" id="zChips" hidden-by-css><span class="lbl">dBZ shells</span></div>
     <div class="chips" id="vChips" hidden-by-css><span class="lbl">Wind shells</span></div>
+    <div class="opac" id="opac"></div>
+    <div class="chips" id="greyRow" hidden-by-css><span class="lbl">Look</span><button class="chip" id="grey" aria-pressed="false">Grey storm</button><button class="chip" id="opReset">Reset see-through</button></div>
     <div class="row" data-views="tilts blocks"><label for="min" id="minLbl">Min dBZ</label><input id="min" type="range" min="10" max="70" value="25"><output id="minv">25</output></div>
     <div class="row" data-views="tilts"><label for="spread">Spread tilts</label><input id="spread" type="range" min="0" max="6" step="0.5" value="0"><output id="spreadv">0</output></div>
+    <div class="row" data-views="radar"><label for="radarOp">Radar opacity</label><input id="radarOp" type="range" min="10" max="100" value="90"><output id="radarOpv">90%</output></div>
+    <div class="row lift" data-views="tilts blocks shells"><label for="lift">Lift off map</label><input id="lift" type="range" min="0" max="40" step="1" value="0"><output id="liftv">0 km</output></div>
     <div class="row"><label for="exag">Height ×</label><input id="exag" type="range" min="1" max="5" step="0.5" value="2.5"><output id="exagv">2.5</output></div>
     <div class="row" data-views="tilts blocks shells"><label for="cut">Cut away</label><input id="cut" type="range" min="-120" max="30" value="-120"><output id="cutv">off</output></div>
     <div>
@@ -119,6 +127,8 @@ body[data-view="shells"]:not(.vel) #zChips,body[data-view="shells"].vel #vChips{
       <div class="ticks vonly"><span>35 toward</span><span>15</span><span>0</span><span>15</span><span>35 m/s away</span></div>
     </div>
     <div class="btns">
+      <button id="namesBtn" aria-pressed="true">Town names</button>
+      <button id="mapBtn" hidden>Dark map</button>
       <button id="spin" aria-pressed="false">Auto-rotate</button>
       <button id="reset">Reset view</button>
     </div>
@@ -136,7 +146,7 @@ const ZST=[[10,[120,130,140]],[15,[92,157,174]],[20,[39,169,67]],[25,[24,131,35]
 const VST=[[-35,[200,255,200]],[-25,[0,255,60]],[-12,[0,150,40]],[-3,[60,90,65]],[0,[110,110,110]],[3,[95,60,60]],[12,[170,0,20]],[25,[255,30,60]],[35,[255,200,170]]];
 function ramp(st,z){if(z<=st[0][0])return st[0][1];for(let i=1;i<st.length;i++){const[a,ca]=st[i-1],[b,cb]=st[i];if(z<=b){const t=(z-a)/(b-a);return ca.map((v,k)=>v+(cb[k]-v)*t)}}return st.at(-1)[1]}
 const $=id=>document.getElementById(id);
-const st={t:13,view:'radar',data:'z',min:{z:{tilts:25,blocks:45},v:{tilts:15,blocks:20}},spread:0,exag:2.5,cut:-120,raise:false,
+const st={op:{z:{20:13,40:28,50:50,60:95},v:{in15:22,in25:85,out15:22,out25:85}},grey:false,t:13,view:'radar',data:'z',min:{z:{tilts:25,blocks:45},v:{tilts:15,blocks:20}},spread:0,exag:2.5,lift:0,radarOp:90,sat:true,cut:-120,raise:false,
   zl:{20:true,40:true,50:true,60:true},vl:{in15:true,in25:true,out15:true,out25:true}};
 function status(msg,err){const s=$('status');if(!msg){s.hidden=true;return}s.hidden=false;s.textContent=msg;s.classList.toggle('err',!!err)}
 function drawScale(){const sc=$('scale');sc.innerHTML='';
@@ -163,25 +173,48 @@ function label(text,x,z,color){
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true,fog:false}));
   sp.userData.aspect=w/c.height;sp.position.set(x,3.2,z);sp.renderOrder=10;LABELS.push(sp);return sp;
 }
-(function ground(){
-  const g=new THREE.Group();
-  const plane=new THREE.Mesh(new THREE.PlaneGeometry(150,110),new THREE.MeshBasicMaterial({color:0x0d1620}));
-  plane.rotation.x=-Math.PI/2;plane.position.set(-45,-0.05,-5);g.add(plane);
-  const pts=[];for(let v=-120;v<=30;v+=10){pts.push(v,0,50,v,0,-60)}for(let v=-50;v<=60;v+=10){pts.push(-120,0,-v,30,0,-v)}
-  const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
-  g.add(new THREE.LineSegments(gg,new THREE.LineBasicMaterial({color:0x1d2b3a})));
-  for(const r of [25,50,75,100]){const p=[];for(let a=0;a<=160;a++){const t=a/160*Math.PI*2;p.push(new THREE.Vector3(Math.sin(t)*r,0.03,-Math.cos(t)*r))}
-    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:0x2c6b78,transparent:true,opacity:.5})))}
-  const radar=new THREE.Mesh(new THREE.ConeGeometry(0.9,2.4,4),new THREE.MeshBasicMaterial({color:0xff5a5a}));radar.position.set(0,1.2,0);g.add(radar);
-  g.add(label('Mt Stapylton radar',0,0,'#ff8a8a'));
-  for(const[n,lon,lat]of PLACES){const x=(lon-RLON)*111.32*Math.cos(RLAT*Math.PI/180),y=(lat-RLAT)*110.57;
-    const d=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,8),new THREE.MeshBasicMaterial({color:0xffffff}));d.position.set(x,0.3,-y);g.add(d);g.add(label(n,x,-y,'#ffffff'))}
-  world.add(g);
+const TOWNS=[];
+const KX=111.32*Math.cos(RLAT*Math.PI/180),KY=110.57,MAPR=135;
+const toLocal=(lon,lat)=>[(lon-RLON)*KX,(lat-RLAT)*KY];
+const ground=new THREE.Group();world.add(ground);
+const darkGround=new THREE.Mesh(new THREE.PlaneGeometry(MAPR*2,MAPR*2),new THREE.MeshBasicMaterial({color:0x0d1620,fog:false}));
+darkGround.rotation.x=-Math.PI/2;darkGround.position.y=-0.05;ground.add(darkGround);
+let satMesh=null;
+(function marks(){
+  for(const r of [25,50,75,100]){const p=[];for(let a=0;a<=160;a++){const t=a/160*Math.PI*2;p.push(new THREE.Vector3(Math.sin(t)*r,0.3,-Math.cos(t)*r))}
+    ground.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:0x4fd2e8,transparent:true,opacity:.35,fog:false})))}
+  const radar=new THREE.Mesh(new THREE.ConeGeometry(0.9,2.4,4),new THREE.MeshBasicMaterial({color:0xff5a5a}));radar.position.set(0,1.2,0);ground.add(radar);
+  ground.add(label('Mt Stapylton radar',0,0,'#ff8a8a'));
+  for(const[n,lon,lat]of PLACES){const[x,y]=toLocal(lon,lat);
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,8),new THREE.MeshBasicMaterial({color:0xffffff}));d.position.set(x,0.4,-y);ground.add(d);const sp=label(n,x,-y,'#ffffff');ground.add(sp);TOWNS.push(d,sp)}
 })();
-const topPlane=new THREE.Mesh(new THREE.PlaneGeometry(TOPR*2,TOPR*2),new THREE.MeshBasicMaterial({transparent:true,depthWrite:false,fog:false}));
-topPlane.rotation.x=-Math.PI/2;topPlane.position.y=0.05;topPlane.renderOrder=1;world.add(topPlane);
-const topBg=new THREE.Mesh(new THREE.CircleGeometry(TOPR,128),new THREE.MeshBasicMaterial({color:0x020406,fog:false}));topBg.rotation.x=-Math.PI/2;topBg.position.y=0.01;world.add(topBg);
-
+/* satellite map: Esri World Imagery tiles stitched into one texture, each vertex placed by its real lat/lon */
+(async function satellite(){
+  const Z=10,n=2**Z;
+  const tileOf=(lon,lat)=>{const r=lat*Math.PI/180;return[(lon+180)/360*n,(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n]};
+  const lonlatOf=(tx,ty)=>[tx/n*360-180,Math.atan(Math.sinh(Math.PI*(1-2*ty/n)))*180/Math.PI];
+  const[ax,ay]=tileOf(RLON-MAPR/KX,RLAT+MAPR/KY),[bx,by]=tileOf(RLON+MAPR/KX,RLAT-MAPR/KY);
+  const tx0=Math.floor(ax),ty0=Math.floor(ay),nx=Math.floor(bx)-tx0+1,ny=Math.floor(by)-ty0+1;
+  const cv=document.createElement('canvas');cv.width=nx*256;cv.height=ny*256;const ctx=cv.getContext('2d');
+  ctx.fillStyle='#0d1620';ctx.fillRect(0,0,cv.width,cv.height);
+  let ok=0;const jobs=[];
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)jobs.push(new Promise(res=>{const im=new Image();im.crossOrigin='anonymous';
+    im.onload=()=>{ctx.drawImage(im,i*256,j*256);ok++;res()};im.onerror=()=>res();
+    im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${Z}/${ty0+j}/${tx0+i}`}));
+  await Promise.all(jobs);
+  if(!ok)return;                                   // blocked or offline: keep the dark ground
+  ctx.fillStyle='rgba(0,0,0,0.18)';ctx.fillRect(0,0,cv.width,cv.height);
+  const tex=new THREE.CanvasTexture(cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  const seg=48,geo=new THREE.PlaneGeometry(1,1,seg,seg),pos=geo.attributes.position,uv=geo.attributes.uv;
+  for(let k=0;k<pos.count;k++){const u=uv.getX(k),v=uv.getY(k);const[lon,lat]=lonlatOf(tx0+u*nx,ty0+(1-v)*ny);const[x,y]=toLocal(lon,lat);pos.setXYZ(k,x,0,-y)}
+  pos.needsUpdate=true;geo.computeBoundingSphere();
+  satMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,fog:false}));
+  ground.add(satMesh);applyMap();
+  $('mapBtn').hidden=false;
+})();
+const topPlane=new THREE.Mesh(new THREE.PlaneGeometry(TOPR*2,TOPR*2),new THREE.MeshBasicMaterial({transparent:true,opacity:0.9,depthWrite:false,fog:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+topPlane.rotation.x=-Math.PI/2;topPlane.position.y=0.15;topPlane.renderOrder=2;world.add(topPlane);
+function applyMap(){if(!satMesh)return;satMesh.visible=st.sat;darkGround.visible=!st.sat;$('mapBtn').textContent=st.sat?'Dark map':'Satellite map'}
 /* ---------- frame loading ---------- */
 const cache=new Map(),pending=new Map();
 async function fetchFrame(i){
@@ -240,9 +273,10 @@ function buildTilts(f){
 const ZSHELL={20:{c:0x3fb878,o:0.13},40:{c:0xf2d20a,o:0.28},50:{c:0xf2400f,o:0.5},60:{c:0xd56ad6,o:0.95}};
 const VSHELL={in15:{c:0x1fbf55,o:0.22,k:'svin15'},in25:{c:0x6dff8a,o:0.85,k:'svin25'},out15:{c:0xc8102e,o:0.22,k:'svout15'},out25:{c:0xff4d6a,o:0.85,k:'svout25'}};
 function buildShells(f){
-  const add=(geo,s,order)=>{if(!geo)return;const m=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:s.c,transparent:s.o<0.9,opacity:s.o,side:THREE.DoubleSide,depthWrite:s.o>=0.8,shininess:30,clippingPlanes:[clip]}));m.renderOrder=order;storm.add(m)};
-  if(st.data==='z'){for(const L of[20,40,50,60])if(st.zl[L])add(shellGeo(f,'sz'+L),ZSHELL[L],100-L)}
-  else for(const k of['in15','out15','in25','out25'])if(st.vl[k])add(shellGeo(f,VSHELL[k].k),VSHELL[k],k.endsWith('15')?2:5);
+  const add=(geo,s,pct,order)=>{if(!geo||pct<=0)return;const o=pct/100,solid=o>=0.99;
+    const m=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:st.grey?0xc4cad1:s.c,transparent:!solid,opacity:solid?1:o,side:THREE.DoubleSide,depthWrite:o>=0.8,shininess:st.grey?12:30,clippingPlanes:[clip]}));m.renderOrder=order;storm.add(m)};
+  if(st.data==='z'){for(const L of[20,40,50,60])if(st.zl[L])add(shellGeo(f,'sz'+L),ZSHELL[L],st.op.z[L],100-L)}
+  else for(const k of['in15','out15','in25','out25'])if(st.vl[k])add(shellGeo(f,VSHELL[k].k),VSHELL[k],st.op.v[k],k.endsWith('15')?2:5);
 }
 let current=null;
 async function render(){
@@ -251,10 +285,10 @@ async function render(){
   if(!f){status(`Loading ${FRAMES[i].label}…`);try{f=await fetchFrame(i)}catch(e){status(e.message,true);return}if(st.t!==i)return;status(null)}
   current=f;clearStorm();
   $('peak').textContent=`${Math.round(f.meta.maxz)} dBZ`;
-  const radar=st.view==='radar';topPlane.visible=topBg.visible=radar;
+  const radar=st.view==='radar';topPlane.visible=radar;topPlane.material.opacity=st.radarOp/100;
   if(radar){topPlane.material.map=f.tex[st.data==='z'?'pz':'pv'];topPlane.material.needsUpdate=true;if(st.raise)buildShells(f)}
   else if(st.view==='blocks')buildBlocks(f);else if(st.view==='tilts')buildTilts(f);else buildShells(f);
-  storm.scale.y=st.exag;
+  storm.scale.y=st.exag;storm.position.y=st.lift;
   for(const d of[1,2,-1])if(i+d>=0&&i+d<FRAMES.length)fetchFrame(i+d).catch(()=>{});  // prefetch neighbours
 }
 
@@ -265,7 +299,7 @@ function setView(v){const was=st.view;st.view=v;document.body.dataset.view=v;
   [['radar','vRadar'],['tilts','vTilts'],['blocks','vBlocks'],['shells','vShells']].forEach(([k,id])=>$(id).setAttribute('aria-pressed',k===v));
   syncMin();render();if((v==='radar')!==(was==='radar'))home()}
 function setData(d){st.data=d;document.body.classList.toggle('vel',d==='v');$('dZ').setAttribute('aria-pressed',d==='z');$('dV').setAttribute('aria-pressed',d==='v');
-  $('dlabel').textContent=d==='z'?'Reflectivity':'Velocity';drawScale();syncMin();render()}
+  $('dlabel').textContent=d==='z'?'Reflectivity':'Velocity';drawScale();drawOpac();syncMin();render()}
 $('vRadar').onclick=()=>setView('radar');$('vTilts').onclick=()=>setView('tilts');$('vBlocks').onclick=()=>setView('blocks');$('vShells').onclick=()=>setView('shells');
 $('dZ').onclick=()=>setData('z');$('dV').onclick=()=>setData('v');
 let deb=null;const later=f=>{clearTimeout(deb);deb=setTimeout(f,90)};
@@ -273,13 +307,28 @@ $('time').oninput=()=>{st.t=+$('time').value;$('tlabel').textContent=FRAMES[st.t
 $('prev').onclick=()=>{if(st.t>0){st.t--;render()}};$('next').onclick=()=>{if(st.t<FRAMES.length-1){st.t++;render()}};
 $('min').oninput=()=>{st.min[st.data][st.view]=+$('min').value;$('minv').textContent=$('min').value;later(render)};
 $('spread').oninput=()=>{st.spread=+$('spread').value;$('spreadv').textContent=st.spread;later(render)};
+$('radarOp').oninput=()=>{st.radarOp=+$('radarOp').value;$('radarOpv').textContent=st.radarOp+'%';topPlane.material.opacity=st.radarOp/100};
+$('lift').oninput=()=>{st.lift=+$('lift').value;$('liftv').textContent=st.lift+' km';storm.position.y=st.lift};
+$('namesBtn').onclick=()=>{const on=$('namesBtn').getAttribute('aria-pressed')!=='true';$('namesBtn').setAttribute('aria-pressed',on);TOWNS.forEach(o=>o.visible=on)};
+$('mapBtn').onclick=()=>{st.sat=!st.sat;applyMap()};
 $('exag').oninput=()=>{st.exag=+$('exag').value;$('exagv').textContent=st.exag;storm.scale.y=st.exag;if(st.view==='tilts')later(render)};
 $('cut').oninput=()=>{st.cut=+$('cut').value;clip.constant=-st.cut;$('cutv').textContent=st.cut<=-120?'off':(st.cut<0?`${-st.cut} km W`:`${st.cut} km E`)};
 for(const L of[20,40,50,60]){const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed','true');
   b.innerHTML=`<i style="background:#${ZSHELL[L].c.toString(16).padStart(6,'0')}"></i>${L}+`;b.onclick=()=>{st.zl[L]=!st.zl[L];b.setAttribute('aria-pressed',st.zl[L]);render()};$('zChips').appendChild(b)}
 for(const[k,name]of[['in15','Toward 15+'],['in25','Toward 25+'],['out15','Away 15+'],['out25','Away 25+']]){const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed','true');
   b.innerHTML=`<i style="background:#${VSHELL[k].c.toString(16).padStart(6,'0')}"></i>${name}`;b.title=`${name} m/s`;b.onclick=()=>{st.vl[k]=!st.vl[k];b.setAttribute('aria-pressed',st.vl[k]);render()};$('vChips').appendChild(b)}
-$('raise').onclick=()=>{st.raise=!st.raise;$('raise').setAttribute('aria-pressed',st.raise);render();
+const OP_DEFAULT=JSON.parse(JSON.stringify(st.op));
+function drawOpac(){const box=$('opac');box.innerHTML='';
+  const items=st.data==='z'?[20,40,50,60].map(L=>[L,`${L}+ dBZ`,ZSHELL[L].c]):[['in15','Toward 15+',VSHELL.in15.c],['in25','Toward 25+',VSHELL.in25.c],['out15','Away 15+',VSHELL.out15.c],['out25','Away 25+',VSHELL.out25.c]];
+  for(const[k,name,c]of items){const id='op_'+st.data+'_'+k,v=st.op[st.data][k];
+    const r=document.createElement('div');r.className='row';
+    r.innerHTML=`<label for="${id}"><i style="background:${st.grey?'#c4cad1':'#'+c.toString(16).padStart(6,'0')}"></i>${name}</label><input id="${id}" type="range" min="0" max="100" step="1" value="${v}"><output>${v===0?'off':v>=100?'solid':v+'%'}</output>`;
+    const inp=r.querySelector('input'),out=r.querySelector('output');
+    inp.oninput=()=>{const n=+inp.value;st.op[st.data][k]=n;out.textContent=n===0?'off':n>=100?'solid':n+'%';later(render)};
+    box.appendChild(r)}}
+$('grey').onclick=()=>{st.grey=!st.grey;$('grey').setAttribute('aria-pressed',st.grey);drawOpac();render()};
+$('opReset').onclick=()=>{st.op=JSON.parse(JSON.stringify(OP_DEFAULT));drawOpac();render()};
+$('raise').onclick=()=>{st.raise=!st.raise;document.body.classList.toggle('raised',st.raise);$('raise').setAttribute('aria-pressed',st.raise);render();
   if(st.raise){const n=innerWidth<600;controls.target.set(-30,6,-10);camera.position.set(45,n?160:100,n?185:125);controls.update()}else home()};
 $('fold').onclick=()=>{const open=$('fold').getAttribute('aria-expanded')!=='true';$('fold').setAttribute('aria-expanded',open);$('fold').textContent=open?'Hide':'Controls';$('dockBody').hidden=!open};
 let playing=false;
@@ -291,7 +340,7 @@ function home(){const narrow=innerWidth<600;
   controls.target.set(-35,8,-8);camera.position.set(50,narrow?160:100,narrow?190:130);controls.update()}
 $('reset').onclick=home;
 function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
-addEventListener('resize',resize);resize();drawScale();syncMin();home();render();
+addEventListener('resize',resize);resize();drawScale();drawOpac();syncMin();home();render();
 (function loop(){requestAnimationFrame(loop);controls.update();
   for(const sp of LABELS){const d=camera.position.distanceTo(sp.position),h=Math.max(2.2,d*0.022);sp.scale.set(h*sp.userData.aspect,h,1)}
   renderer.render(scene,camera)})();
